@@ -1,0 +1,50 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15
+    container_name: zinkbot-postgres
+    environment:
+      POSTGRES_DB: zinkbot
+      POSTGRES_USER: zinkuser
+      POSTGRES_PASSWORD: zinkpassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - zinkbot-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zinkuser -d zinkbot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: .
+    container_name: zinkbot-backend
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - DOCKER_ENV=true
+      - DATABASE_URL=postgresql://zinkuser:zinkpassword@postgres:5432/zinkbot
+      - JWT_SECRET=your-super-secret-jwt-key-here-change-this-in-production
+      - JWT_EXPIRE=7d
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - zinkbot-network
+    command: >
+      sh -c "sleep 5 && npm run dev"
+
+volumes:
+  postgres_data:
+
+networks:
+  zinkbot-network:
+    driver: bridge
