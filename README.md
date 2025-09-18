@@ -1,6 +1,10 @@
+<<<<<<< HEAD
 # Create README.md with proper formatting
 cat > README.md << 'EOF'
 # ZincBot - AI-Powered Crypto Trading Bot
+=======
+SarzamineCodha Corporation
+>>>>>>> c5d57885f4fff7b1ab0e84ecfd9540d80f8de11a
 
 A sophisticated algorithmic trading bot for cryptocurrency markets with backtesting and live trading capabilities.
 
@@ -34,6 +38,10 @@ A sophisticated algorithmic trading bot for cryptocurrency markets with backtest
 - Bitfinex API
 
 ## Project Structure
+<<<<<<< HEAD
+=======
+
+>>>>>>> c5d57885f4fff7b1ab0e84ecfd9540d80f8de11a
 ZincBot/
 ├── UI/ # React frontend
 │ ├── src/
@@ -55,7 +63,10 @@ ZincBot/
 
 
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> c5d57885f4fff7b1ab0e84ecfd9540d80f8de11a
 ## Quick Start
 
 ### Prerequisites
@@ -113,9 +124,22 @@ Environment variables are configured in \`docker-compose.yml\`:
 
 ## License
 
+<<<<<<< HEAD
 This project is licensed under the MIT License.
+=======
+This project is licensed under the SarzamineCodha License.
+>>>>>>> c5d57885f4fff7b1ab0e84ecfd9540d80f8de11a
 
 ## Disclaimer
 
 ⚠️ **Trading involves significant risk**. This software is for educational purposes only. Use at your own risk. The authors are not responsible for any financial losses.
 EOF
+<<<<<<< HEAD
+=======
+
+
+
+
+
+
+>>>>>>> c5d57885f4fff7b1ab0e84ecfd9540d80f8de11a
