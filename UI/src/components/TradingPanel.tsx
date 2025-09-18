@@ -26,7 +26,8 @@ import {
   Brain,
   Bitcoin,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Eye
 } from 'lucide-react';
 
 interface TradingPanelProps {
@@ -34,11 +35,11 @@ interface TradingPanelProps {
 }
 
 interface BacktestResult {
-  initialBalance: number;
-  finalBalance: number;
-  netProfit: number;
-  winRate: number;
-  maxDrawdown: number;
+  initialBalance: number | string;
+  finalBalance: number | string;
+  netProfit: number | string;
+  winRate: number | string;
+  maxDrawdown: number | string;
   totalTrades: number;
   winningTrades: number;
   losingTrades: number;
@@ -90,6 +91,7 @@ export function TradingPanel({ hasApiKeys }: TradingPanelProps) {
   const [liveBotStatus, setLiveBotStatus] = useState<LiveBotStatus | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [monitoringInterval, setMonitoringInterval] = useState<NodeJS.Timeout | null>(null);
+  const [showResults, setShowResults] = useState(false);
 
   const API_BASE_URL = '/api/v1';
 
@@ -103,7 +105,6 @@ export function TradingPanel({ hasApiKeys }: TradingPanelProps) {
     };
   }, []);
 
-  // Add this function to load saved settings
   const loadSavedSettings = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -116,14 +117,12 @@ export function TradingPanel({ hasApiKeys }: TradingPanelProps) {
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
-          // Update live settings with saved values
           setLiveSettings({
             balance: data.settings.balance.toString(),
             leverage: data.settings.leverage.toString(),
             maxRisk: data.settings.maxRisk.toString()
           });
 
-          // If bot is running, load its status
           if (data.settings.isLiveTrading) {
             loadRunningBotStatus();
           }
@@ -134,7 +133,6 @@ export function TradingPanel({ hasApiKeys }: TradingPanelProps) {
     }
   };
 
-  // Add this function to load running bot status
   const loadRunningBotStatus = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -149,7 +147,6 @@ export function TradingPanel({ hasApiKeys }: TradingPanelProps) {
         if (data.success && data.bots.length > 0) {
           const runningBot = data.bots.find((bot: any) => bot.status === 'running');
           if (runningBot) {
-            // Set initial status
             setLiveBotStatus({
               id: runningBot.id,
               status: 'running',
@@ -158,7 +155,6 @@ export function TradingPanel({ hasApiKeys }: TradingPanelProps) {
               settings: runningBot.settings
             });
             
-            // Monitor the running bot
             monitorBotStatus(runningBot.id, 'live');
           }
         }
@@ -168,11 +164,10 @@ export function TradingPanel({ hasApiKeys }: TradingPanelProps) {
     }
   };
 
-  // Add this helper function
   const calculateProgress = (logs: any[]) => {
     if (!logs || logs.length === 0) return 0;
     
-    const totalLogs = 100; // Assuming 100 logs for completion
+    const totalLogs = 100;
     return Math.min((logs.length / totalLogs) * 100, 100);
   };
 
@@ -183,6 +178,9 @@ export function TradingPanel({ hasApiKeys }: TradingPanelProps) {
     }
 
     setIsLoading(true);
+    setBacktestResult(null);
+    setShowResults(false);
+    
     try {
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_BASE_URL}/backtest/start`, {
@@ -289,51 +287,95 @@ export function TradingPanel({ hasApiKeys }: TradingPanelProps) {
     }
   };
 
-const monitorBotStatus = (botId: string, type: 'backtest' | 'live') => {
-  if (monitoringInterval) {
-    clearInterval(monitoringInterval);
-  }
+  const monitorBotStatus = (botId: string, type: 'backtest' | 'live') => {
+    if (monitoringInterval) {
+      clearInterval(monitoringInterval);
+    }
 
-  const interval = setInterval(async () => {
+    const interval = setInterval(async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const endpoint = type === 'backtest' ? 'backtest' : 'live';
+        const response = await fetch(`${API_BASE_URL}/${endpoint}/status/${botId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          
+          if (type === 'backtest') {
+            if (data.bot.result) {
+              setBacktestResult({
+                initialBalance: data.bot.result.initialBalance,
+                finalBalance: data.bot.result.finalBalance,
+                netProfit: data.bot.result.netProfit,
+                winRate: data.bot.result.winRate,
+                maxDrawdown: data.bot.result.maxDrawdown,
+                totalTrades: data.bot.result.totalTrades,
+                winningTrades: data.bot.result.winningTrades,
+                losingTrades: data.bot.result.losingTrades,
+                isRunning: data.bot.status === 'running',
+                progress: data.bot.status === 'running' ? 50 : 100
+              });
+              setShowResults(true);
+            }
+          } else {
+            setLiveBotStatus(prev => ({
+              ...prev,
+              ...data.bot,
+              settings: data.bot.settings || prev?.settings
+            }));
+          }
+
+          if (data.bot.status !== 'running') {
+            clearInterval(interval);
+            if (data.bot.status === 'completed') {
+              toast.success(type === 'backtest' ? 'بک‌تست با موفقیت تکمیل شد!' : 'معاملات زنده تکمیل شد!');
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Monitoring error:', error);
+      }
+    }, 3000);
+
+    setMonitoringInterval(interval);
+  };
+
+  const loadBacktestHistory = async () => {
     try {
       const token = localStorage.getItem('token');
-      const endpoint = type === 'backtest' ? 'backtest' : 'live';
-      const response = await fetch(`${API_BASE_URL}/${endpoint}/status/${botId}`, {
+      const response = await fetch(`${API_BASE_URL}/backtest/results`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
       if (response.ok) {
         const data = await response.json();
-        
-        if (type === 'backtest') {
-          setBacktestResult(prev => ({
-            ...prev,
-            ...data.result,
-            isRunning: data.bot.status === 'running',
-            progress: calculateProgress(data.bot.logs)
-          }));
+        if (data.success && data.results && data.results.length > 0) {
+          const latestResult = data.results[0];
+          setBacktestResult({
+            initialBalance: latestResult.initialBalance,
+            finalBalance: latestResult.finalBalance,
+            netProfit: latestResult.netProfit,
+            winRate: latestResult.winRate,
+            maxDrawdown: latestResult.maxDrawdown,
+            totalTrades: latestResult.totalTrades,
+            winningTrades: latestResult.winningTrades,
+            losingTrades: latestResult.losingTrades,
+            isRunning: false,
+            progress: 100
+          });
+          setShowResults(true);
+          toast.success('نتایج قبلی بارگذاری شد');
         } else {
-          setLiveBotStatus(prev => ({
-            ...prev,
-            ...data.bot,
-            settings: data.bot.settings || prev?.settings
-          }));
-        }
-
-        if (data.bot.status !== 'running') {
-          clearInterval(interval);
-          if (data.bot.status === 'completed') {
-            toast.success(type === 'backtest' ? 'Backtest completed!' : 'Live trading completed!');
-          }
+          toast.info('هیچ نتیجه بک‌تستی یافت نشد');
         }
       }
     } catch (error) {
-      console.error('Monitoring error:', error);
+      console.error('Load backtest history error:', error);
+      toast.error('خطا در بارگذاری نتایج قبلی');
     }
-  }, 3000);
-
-  setMonitoringInterval(interval);
-};
+  };
 
   const getPredictionColor = (prediction: number) => {
     if (prediction > 0.7) return 'text-green-600';
@@ -447,6 +489,43 @@ const monitorBotStatus = (botId: string, type: 'backtest' | 'live') => {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="persian-text">بازه زمانی (روز)</Label>
+                  <Select 
+                    value={backtestSettings.period}
+                    onValueChange={(value) => setBacktestSettings({...backtestSettings, period: value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1 روز</SelectItem>
+                      <SelectItem value="7">7 روز</SelectItem>
+                      <SelectItem value="30">30 روز</SelectItem>
+                      <SelectItem value="90">90 روز</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="persian-text">تایم‌فریم</Label>
+                  <Select 
+                    value={backtestSettings.timeframe}
+                    onValueChange={(value) => setBacktestSettings({...backtestSettings, timeframe: value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1m">1 دقیقه</SelectItem>
+                      <SelectItem value="5m">5 دقیقه</SelectItem>
+                      <SelectItem value="15m">15 دقیقه</SelectItem>
+                      <SelectItem value="1h">1 ساعت</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
               <Button 
                 onClick={handleBacktest} 
                 className="w-full persian-text"
@@ -461,35 +540,101 @@ const monitorBotStatus = (botId: string, type: 'backtest' | 'live') => {
                   'شروع بک‌تست'
                 )}
               </Button>
+
+              {backtestResult && (
+                <Button 
+                  onClick={() => setShowResults(!showResults)}
+                  variant="outline"
+                  className="w-full persian-text"
+                >
+                  <Eye className="w-4 h-4 ml-2" />
+                  {showResults ? 'پنهان کردن نتایج' : 'نمایش نتایج'}
+                </Button>
+              )}
             </CardContent>
           </Card>
 
-          {backtestResult && (
+          {backtestResult && showResults && (
             <Card>
               <CardHeader>
                 <CardTitle className="persian-text">نتایج بک‌تست</CardTitle>
+                <CardDescription className="persian-text">
+                  عملکرد استراتژی در بازه زمانی انتخاب شده
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4 mb-4">
                   <div className="space-y-2">
                     <Label className="persian-text">موجودی اولیه</Label>
-                    <p className="text-lg font-semibold">${backtestResult.initialBalance}</p>
+                    <p className="text-lg font-semibold">${Number(backtestResult.initialBalance).toLocaleString()}</p>
                   </div>
                   <div className="space-y-2">
                     <Label className="persian-text">موجودی نهایی</Label>
-                    <p className="text-lg font-semibold">${backtestResult.finalBalance}</p>
+                    <p className="text-lg font-semibold">${Number(backtestResult.finalBalance).toLocaleString()}</p>
                   </div>
                   <div className="space-y-2">
                     <Label className="persian-text">سود خالص</Label>
-                    <p className={`text-lg font-semibold ${backtestResult.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      ${backtestResult.netProfit}
+                    <p className={`text-lg font-semibold ${Number(backtestResult.netProfit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      ${Number(backtestResult.netProfit).toLocaleString()}
                     </p>
                   </div>
                   <div className="space-y-2">
                     <Label className="persian-text">نرخ برد</Label>
-                    <p className="text-lg font-semibold">{backtestResult.winRate}%</p>
+                    <p className="text-lg font-semibold">{Number(backtestResult.winRate).toFixed(2)}%</p>
                   </div>
                 </div>
+
+                <Separator className="my-4" />
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="persian-text">حداکثر افت سرمایه</Label>
+                    <p className="text-lg font-semibold">{Number(backtestResult.maxDrawdown).toFixed(2)}%</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="persian-text">تعداد معاملات</Label>
+                    <p className="text-lg font-semibold">{backtestResult.totalTrades}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="persian-text">معاملات برنده</Label>
+                    <p className="text-lg font-semibold text-green-600">{backtestResult.winningTrades}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="persian-text">معاملات بازنده</Label>
+                    <p className="text-lg font-semibold text-red-600">{backtestResult.losingTrades}</p>
+                  </div>
+                </div>
+
+                {backtestResult.isRunning && (
+                  <div className="mt-4">
+                    <Label className="persian-text">پیشرفت بک‌تست</Label>
+                    <Progress value={backtestResult.progress} className="mt-2" />
+                    <p className="text-sm text-muted-foreground text-center mt-2">
+                      {backtestResult.progress.toFixed(0)}% تکمیل شده
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {!backtestResult && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="persian-text">تاریخچه بک‌تست</CardTitle>
+                <CardDescription className="persian-text">
+                  نتایج بک‌تست‌های قبلی خود را مشاهده کنید
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button 
+                  onClick={loadBacktestHistory}
+                  variant="outline"
+                  className="w-full persian-text"
+                >
+                  <Eye className="w-4 h-4 ml-2" />
+                  مشاهده آخرین نتایج
+                </Button>
               </CardContent>
             </Card>
           )}
@@ -601,7 +746,6 @@ const monitorBotStatus = (botId: string, type: 'backtest' | 'live') => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-6">
-                  {/* Real-time Stats */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="text-center p-4 bg-gray-50 rounded-lg">
                       <Label className="persian-text">قیمت فعلی BTC</Label>
@@ -618,7 +762,7 @@ const monitorBotStatus = (botId: string, type: 'backtest' | 'live') => {
                       <div className="flex items-center justify-center mt-2">
                         {liveBotStatus.prediction && getPredictionIcon(liveBotStatus.prediction)}
                         <p className={`text-xl font-bold ml-2 ${getPredictionColor(liveBotStatus.prediction || 0.5)}`}>
-                          {liveBotStatus.prediction ? (liveBotStatus.prediction * 100).toFixed(1) + '%' : '--'}
+                          {liveBotStatus.prediction ? (Number(liveBotStatus.prediction) * 100).toFixed(1) + '%' : '--'}
                         </p>
                       </div>
                     </div>
@@ -633,14 +777,13 @@ const monitorBotStatus = (botId: string, type: 'backtest' | 'live') => {
                     <div className="text-center p-4 bg-gray-50 rounded-lg">
                       <Label className="persian-text">سود/زیان</Label>
                       <p className={`text-xl font-bold mt-2 ${(liveBotStatus.profit || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        ${liveBotStatus.profit ? liveBotStatus.profit.toFixed(2) : '0.00'}
+                        ${liveBotStatus.profit ? Number(liveBotStatus.profit).toFixed(2) : '0.00'}
                       </p>
                     </div>
                   </div>
 
                   <Separator />
 
-                  {/* Settings Summary */}
                   <div className="grid grid-cols-3 gap-4">
                     <div>
                       <Label className="persian-text">موجودی</Label>
@@ -656,7 +799,6 @@ const monitorBotStatus = (botId: string, type: 'backtest' | 'live') => {
                     </div>
                   </div>
 
-                  {/* Logs */}
                   {liveBotStatus.logs.length > 0 && (
                     <>
                       <Separator />

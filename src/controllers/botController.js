@@ -44,74 +44,117 @@ exports.startBacktest = async (req, res) => {
     });
 
     let resultData = '';
+    let capturingResult = false;
 
-    botProcess.stdout.on('data', (data) => {
-      const log = data.toString().trim();
-      if (log) {
-        const bot = backtestProcesses.get(botId);
-        if (bot) {
-          bot.logs.push({
-            timestamp: new Date(),
-            message: log,
-            type: 'info'
-          });
-          
-          // Capture backtest results
-          if (log.includes('==== Backtest Report ====')) {
-            resultData = '';
-          } else if (log.trim() && !log.includes('==== Classification Report ====')) {
-            resultData += log + '\n';
-          }
-        }
+// In your botController.js, add more debug logging:
+botProcess.stdout.on('data', (data) => {
+  const log = data.toString().trim();
+  console.log('PYTHON OUTPUT:', log); // Add this
+  
+  if (log) {
+    const bot = backtestProcesses.get(botId);
+    if (bot) {
+      bot.logs.push({
+        timestamp: new Date(),
+        message: log,
+        type: 'info'
+      });
+      
+      // Capture backtest results
+      if (log.includes('==== BACKTEST_RESULT_START ====')) {
+        capturingResult = true;
+        resultData = '';
+        console.log('STARTED CAPTURING RESULT'); // Debug
+      } else if (log.includes('==== BACKTEST_RESULT_END ====')) {
+        capturingResult = false;
+        console.log('FINISHED CAPTURING RESULT:', resultData); // Debug
+      } else if (capturingResult) {
+        resultData += log + '\n';
       }
-    });
+    }
+  }
+});
 
-    botProcess.stderr.on('data', (data) => {
-      const log = data.toString().trim();
-      if (log) {
-        const bot = backtestProcesses.get(botId);
-        if (bot) {
-          bot.logs.push({
-            timestamp: new Date(),
-            message: log,
-            type: 'error'
-          });
-        }
-      }
-    });
+botProcess.stderr.on('data', (data) => {
+  const errorLog = data.toString().trim();
+  console.log('PYTHON ERROR:', errorLog); // Add this
+  // ... rest of error handling
+});
 
-    botProcess.on('close', async (code) => {
-      const bot = backtestProcesses.get(botId);
-      if (bot) {
-        bot.status = code === 0 ? 'completed' : 'failed';
-        bot.endTime = new Date();
+// In the botProcess.on('close') handler, add detailed logging:
+botProcess.on('close', async (code) => {
+  console.log('=== BACKTEST PROCESS COMPLETED ===');
+  console.log('Exit code:', code);
+  console.log('Raw result data:', resultData);
+  
+  const bot = backtestProcesses.get(botId);
+  if (bot) {
+    bot.status = code === 0 ? 'completed' : 'failed';
+    bot.endTime = new Date();
+    
+    if (code === 0 && resultData) {
+      try {
+        console.log('Cleaning JSON data...');
         
-        if (code === 0) {
-          // Parse and save backtest results
-          const result = this.parseBacktestResult(resultData);
-          bot.result = result;
-          
-          // Save to database
-          await BacktestResult.create({
-            userId,
-            initialBalance: result.initialBalance,
-            finalBalance: result.finalBalance,
-            netProfit: result.netProfit,
-            winRate: result.winRate,
-            maxDrawdown: result.maxDrawdown,
-            totalTrades: result.totalTrades,
-            winningTrades: result.winningTrades,
-            losingTrades: result.losingTrades,
-            settings: { balance, leverage, period, timeframe }
-          });
-        }
+        // Clean the JSON - remove commas and fix any formatting issues
+        const cleanedResultData = resultData
+          .replace(/,/g, '') // Remove commas from numbers
+          .replace(/\n/g, '') // Remove newlines
+          .trim();
+        
+        console.log('Cleaned data:', cleanedResultData);
+        
+        const result = JSON.parse(cleanedResultData);
+        console.log('Parsed result:', result);
+        
+        bot.result = result;
+        
+        console.log('Attempting to save to database...');
+        console.log('User ID:', userId);
+        console.log('Balance:', balance);
+        console.log('Leverage:', leverage);
+        
+        const savedResult = await BacktestResult.create({
+          userId: parseInt(userId),
+          initialBalance: parseFloat(result.initialBalance),
+          finalBalance: parseFloat(result.finalBalance),
+          netProfit: parseFloat(result.netProfit),
+          winRate: parseFloat(result.winRate),
+          maxDrawdown: parseFloat(result.maxDrawdown),
+          totalTrades: parseInt(result.totalTrades),
+          winningTrades: parseInt(result.winningTrades),
+          losingTrades: parseInt(result.losingTrades),
+          settings: { 
+            balance: parseFloat(balance), 
+            leverage: parseInt(leverage), 
+            period: period || '7', 
+            timeframe: timeframe || '1m' 
+          }
+        });
 
-        // Clean up after a while
-        setTimeout(() => {
-          backtestProcesses.delete(botId);
-        }, 300000); // 5 minutes
+        console.log('✅ Backtest result saved successfully!');
+        console.log('Saved result ID:', savedResult.id);
+        console.log('Saved at:', savedResult.createdAt);
+        
+      } catch (error) {
+        console.error('❌ Error saving backtest result:', error);
+        console.error('Error details:', error.message);
+        if (error.errors) {
+          console.error('Validation errors:', error.errors);
+        }
+        bot.status = 'failed';
       }
-    });
+    } else {
+      console.log('❌ No result data or process failed');
+      console.log('Result data available:', !!resultData);
+      console.log('Exit code:', code);
+    }
+
+    setTimeout(() => {
+      backtestProcesses.delete(botId);
+    }, 300000);
+  }
+});
 
     res.status(200).json({
       success: true,
@@ -128,39 +171,46 @@ exports.startBacktest = async (req, res) => {
   }
 };
 
-exports.parseBacktestResult = (resultData) => {
-  const result = {};
-  const lines = resultData.split('\n');
-  
-  lines.forEach(line => {
-    if (line.includes('Initial Balance:')) {
-      result.initialBalance = parseFloat(line.split(':')[1].trim());
-    } else if (line.includes('Final Balance:')) {
-      result.finalBalance = parseFloat(line.split(':')[1].trim());
-    } else if (line.includes('Net Profit:')) {
-      result.netProfit = parseFloat(line.split(':')[1].trim());
-    } else if (line.includes('Win Rate:')) {
-      result.winRate = parseFloat(line.split(':')[1].replace('%', '').trim());
-    } else if (line.includes('Max Drawdown:')) {
-      result.maxDrawdown = parseFloat(line.split(':')[1].replace('%', '').trim());
-    } else if (line.includes('Total Trades:')) {
-      result.totalTrades = parseInt(line.split(':')[1].trim());
-    } else if (line.includes('Winning Trades:')) {
-      result.winningTrades = parseInt(line.split(':')[1].trim());
-    } else if (line.includes('Losing Trades:')) {
-      result.losingTrades = parseInt(line.split(':')[1].trim());
-    }
-  });
-  
-  return result;
-};
-
 exports.getBotStatus = async (req, res) => {
   try {
     const { botId } = req.params;
     const bot = backtestProcesses.get(botId);
 
     if (!bot) {
+      // Check if result exists in database
+      try {
+        const backtestResult = await BacktestResult.findOne({
+          where: { userId: req.user.id },
+          order: [['createdAt', 'DESC']]
+        });
+        
+        if (backtestResult) {
+          return res.status(200).json({
+            success: true,
+            bot: {
+              id: botId,
+              status: 'completed',
+              logs: [],
+              startTime: backtestResult.createdAt,
+              endTime: backtestResult.updatedAt,
+              type: 'backtest',
+              result: {
+                initialBalance: backtestResult.initialBalance,
+                finalBalance: backtestResult.finalBalance,
+                netProfit: backtestResult.netProfit,
+                winRate: backtestResult.winRate,
+                maxDrawdown: backtestResult.maxDrawdown,
+                totalTrades: backtestResult.totalTrades,
+                winningTrades: backtestResult.winningTrades,
+                losingTrades: backtestResult.losingTrades
+              }
+            }
+          });
+        }
+      } catch (dbError) {
+        console.error('Database check error:', dbError);
+      }
+      
       return res.status(404).json({
         success: false,
         message: 'بک‌تست یافت نشد'

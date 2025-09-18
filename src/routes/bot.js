@@ -6,8 +6,15 @@ const {
   stopLiveTrading, 
   getLiveBotStatus,
   getUserLiveBots,
-  getUserBotSettings  // Make sure this function exists in liveController
+  getUserBotSettings
 } = require('../controllers/liveController');
+const { getUserBacktestResults } = require('../controllers/backtestResultController'); // Add this
+const { 
+  getUserTickets, 
+  createTicket, 
+  addTicketResponse, 
+  getTicket 
+} = require('../controllers/ticketController'); // Add this
 const { protect } = require('../middleware/auth');
 
 const router = express.Router();
@@ -22,6 +29,15 @@ router.post('/live/start', protect, startLiveTrading);
 router.get('/live/status/:botId', protect, getLiveBotStatus);
 router.post('/live/stop/:botId', protect, stopLiveTrading);
 router.get('/live/bots', protect, getUserLiveBots);
-router.get('/live/settings', protect, getUserBotSettings); // Use the controller function
+router.get('/live/settings', protect, getUserBotSettings);
+
+// Backtest results route - ADD THIS
+router.get('/backtest/results', protect, getUserBacktestResults);
+
+// Ticket routes - ADD THESE
+router.get('/tickets', protect, getUserTickets);
+router.post('/tickets', protect, createTicket);
+router.post('/tickets/:ticketId/responses', protect, addTicketResponse);
+router.get('/tickets/:ticketId', protect, getTicket);
 
 module.exports = router;
