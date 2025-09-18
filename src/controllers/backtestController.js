@@ -1,4 +1,4 @@
-// src/controllers/botController.js
+// src/controllers/backtestController.js
 const { spawn } = require('child_process');
 const path = require('path');
 const BacktestResult = require('../models/BacktestResult');
@@ -105,11 +105,6 @@ exports.startBacktest = async (req, res) => {
             settings: { balance, leverage, period, timeframe }
           });
         }
-
-        // Clean up after a while
-        setTimeout(() => {
-          backtestProcesses.delete(botId);
-        }, 300000); // 5 minutes
       }
     });
 
@@ -155,7 +150,7 @@ exports.parseBacktestResult = (resultData) => {
   return result;
 };
 
-exports.getBotStatus = async (req, res) => {
+exports.getBacktestStatus = async (req, res) => {
   try {
     const { botId } = req.params;
     const bot = backtestProcesses.get(botId);
@@ -188,7 +183,7 @@ exports.getBotStatus = async (req, res) => {
   }
 };
 
-exports.stopBot = async (req, res) => {
+exports.stopBacktest = async (req, res) => {
   try {
     const { botId } = req.params;
     const bot = backtestProcesses.get(botId);

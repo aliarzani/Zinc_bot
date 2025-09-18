@@ -1,4 +1,4 @@
-// src/models/User.js - Simplified version without encryption
+// src/models/User.js - Remove the associate method completely
 const bcrypt = require('bcryptjs');
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
@@ -39,7 +39,8 @@ const User = sequelize.define('User', {
   }
 });
 
-// Simple methods to handle API keys (no encryption)
+// Remove the associate method completely
+
 User.prototype.setAPIKeys = function(publicKey, secretKey) {
   return {
     bitfinexPublicKey: publicKey,

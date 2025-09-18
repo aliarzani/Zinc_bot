@@ -1,5 +1,6 @@
 const app = require('./app');
 const sequelize = require('./config/database');
+const { initializeRunningBots } = require('./controllers/liveController');
 
 const PORT = process.env.PORT || 3001;
 
@@ -37,6 +38,9 @@ const startServer = async () => {
     // Sync models
     await sequelize.sync({ alter: true });
     console.log('Database synced successfully.');
+
+    // Initialize running bots (check database for any bots that were running before server restart)
+    await initializeRunningBots();
 
     // Start server
     app.listen(PORT, () => {

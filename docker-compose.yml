@@ -11,7 +11,6 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - zinkbot-network
     healthcheck:
@@ -40,7 +39,7 @@ services:
     networks:
       - zinkbot-network
     command: >
-      sh -c "sleep 5 && npm run dev"
+      sh -c "sleep 10 && npm run dev"
 
 volumes:
   postgres_data:

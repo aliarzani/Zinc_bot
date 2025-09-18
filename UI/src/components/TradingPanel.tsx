@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+// UI/src/components/TradingPanel.tsx
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -9,7 +10,7 @@ import { Alert, AlertDescription } from './ui/alert';
 import { Badge } from './ui/badge';
 import { Progress } from './ui/progress';
 import { Separator } from './ui/separator';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -20,7 +21,12 @@ import {
   Play,
   Square,
   AlertCircle,
-  BarChart3
+  BarChart3,
+  RefreshCw,
+  Brain,
+  Bitcoin,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 
 interface TradingPanelProps {
@@ -38,13 +44,39 @@ interface BacktestResult {
   losingTrades: number;
   isRunning: boolean;
   progress: number;
+  signals?: Array<{
+    timestamp: string;
+    signal: 'BUY' | 'SELL' | 'HOLD' | 'EXIT';
+    price: number;
+  }>;
+}
+
+interface LiveBotStatus {
+  id: string;
+  status: 'running' | 'completed' | 'failed' | 'stopped';
+  logs: Array<{
+    timestamp: string;
+    message: string;
+    type: 'info' | 'error' | 'warning';
+  }>;
+  startTime: string;
+  endTime?: string;
+  settings: {
+    balance: number;
+    leverage: number;
+    maxRisk: number;
+  };
+  currentPrice?: number;
+  prediction?: number;
+  lastSignal?: 'BUY' | 'SELL' | 'HOLD';
+  profit?: number;
 }
 
 export function TradingPanel({ hasApiKeys }: TradingPanelProps) {
   const [backtestSettings, setBacktestSettings] = useState({
     balance: '10000',
     leverage: '1',
-    period: '7', // days
+    period: '7',
     timeframe: '1m'
   });
 
@@ -55,63 +87,292 @@ export function TradingPanel({ hasApiKeys }: TradingPanelProps) {
   });
 
   const [backtestResult, setBacktestResult] = useState<BacktestResult | null>(null);
-  const [isLiveTrading, setIsLiveTrading] = useState(false);
+  const [liveBotStatus, setLiveBotStatus] = useState<LiveBotStatus | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [monitoringInterval, setMonitoringInterval] = useState<NodeJS.Timeout | null>(null);
 
-  const handleBacktest = () => {
-    if (!hasApiKeys) {
-      toast.error('ابتدا کلیدهای API خود را تنظیم کنید');
-      return;
-    }
+  const API_BASE_URL = '/api/v1';
 
-    // Start backtest
-    setBacktestResult({
-      initialBalance: 0,
-      finalBalance: 0,
-      netProfit: 0,
-      winRate: 0,
-      maxDrawdown: 0,
-      totalTrades: 0,
-      winningTrades: 0,
-      losingTrades: 0,
-      isRunning: true,
-      progress: 0
-    });
+  useEffect(() => {
+    loadSavedSettings();
+    
+    return () => {
+      if (monitoringInterval) {
+        clearInterval(monitoringInterval);
+      }
+    };
+  }, []);
 
-    // Simulate progress
-    const interval = setInterval(() => {
-      setBacktestResult(prev => {
-        if (!prev) return null;
-        const newProgress = prev.progress + 10;
-        if (newProgress >= 100) {
-          clearInterval(interval);
-          return {
-            initialBalance: parseFloat(backtestSettings.balance),
-            finalBalance: 12450.75,
-            netProfit: 2450.75,
-            winRate: 67.5,
-            maxDrawdown: 8.2,
-            totalTrades: 148,
-            winningTrades: 100,
-            losingTrades: 48,
-            isRunning: false,
-            progress: 100
-          };
+  // Add this function to load saved settings
+  const loadSavedSettings = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/live/settings`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
         }
-        return { ...prev, progress: newProgress };
       });
-    }, 300);
 
-    toast.success('بک‌تست شروع شد');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          // Update live settings with saved values
+          setLiveSettings({
+            balance: data.settings.balance.toString(),
+            leverage: data.settings.leverage.toString(),
+            maxRisk: data.settings.maxRisk.toString()
+          });
+
+          // If bot is running, load its status
+          if (data.settings.isLiveTrading) {
+            loadRunningBotStatus();
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error loading saved settings:', error);
+    }
   };
 
-  const handleStartLiveTrading = () => {
+  // Add this function to load running bot status
+  const loadRunningBotStatus = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/live/bots`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.bots.length > 0) {
+          const runningBot = data.bots.find((bot: any) => bot.status === 'running');
+          if (runningBot) {
+            // Set initial status
+            setLiveBotStatus({
+              id: runningBot.id,
+              status: 'running',
+              logs: [],
+              startTime: runningBot.startTime,
+              settings: runningBot.settings
+            });
+            
+            // Monitor the running bot
+            monitorBotStatus(runningBot.id, 'live');
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error loading running bot status:', error);
+    }
+  };
+
+  // Add this helper function
+  const calculateProgress = (logs: any[]) => {
+    if (!logs || logs.length === 0) return 0;
+    
+    const totalLogs = 100; // Assuming 100 logs for completion
+    return Math.min((logs.length / totalLogs) * 100, 100);
+  };
+
+  const handleBacktest = async () => {
     if (!hasApiKeys) {
       toast.error('ابتدا کلیدهای API خود را تنظیم کنید');
       return;
     }
 
-    setIsLiveTrading(!isLiveTrading);
-    toast.success(isLiveTrading ? 'معاملات زنده متوقف شد' : 'معاملات زنده شروع شد');
+    setIsLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/backtest/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ 
+          balance: parseFloat(backtestSettings.balance),
+          leverage: parseInt(backtestSettings.leverage),
+          period: backtestSettings.period,
+          timeframe: backtestSettings.timeframe
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success('بک‌تست شروع شد');
+        monitorBotStatus(data.botId, 'backtest');
+      } else {
+        toast.error(data.message || 'خطا در شروع بک‌تست');
+      }
+    } catch (error) {
+      console.error('Backtest error:', error);
+      toast.error('خطا در ارتباط با سرور');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleStartLiveTrading = async () => {
+    if (!hasApiKeys) {
+      toast.error('ابتدا کلیدهای API خود را تنظیم کنید');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/live/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ 
+          balance: parseFloat(liveSettings.balance),
+          leverage: parseInt(liveSettings.leverage),
+          maxRisk: parseFloat(liveSettings.maxRisk)
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success('معاملات زنده شروع شد');
+        setLiveBotStatus({
+          id: data.botId,
+          status: 'running',
+          logs: [],
+          startTime: new Date().toISOString(),
+          settings: {
+            balance: parseFloat(liveSettings.balance),
+            leverage: parseInt(liveSettings.leverage),
+            maxRisk: parseFloat(liveSettings.maxRisk)
+          }
+        });
+        monitorBotStatus(data.botId, 'live');
+      } else {
+        toast.error(data.message || 'خطا در شروع معاملات زنده');
+      }
+    } catch (error) {
+      console.error('Live trading error:', error);
+      toast.error('خطا در ارتباط با سرور');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleStopLiveTrading = async () => {
+    if (!liveBotStatus) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/live/stop/${liveBotStatus.id}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        toast.info('معاملات زنده متوقف شد');
+        if (monitoringInterval) {
+          clearInterval(monitoringInterval);
+        }
+        setLiveBotStatus(prev => prev ? { ...prev, status: 'stopped' } : null);
+      }
+    } catch (error) {
+      console.error('Stop live trading error:', error);
+      toast.error('خطا در توقف معاملات زنده');
+    }
+  };
+
+const monitorBotStatus = (botId: string, type: 'backtest' | 'live') => {
+  if (monitoringInterval) {
+    clearInterval(monitoringInterval);
+  }
+
+  const interval = setInterval(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const endpoint = type === 'backtest' ? 'backtest' : 'live';
+      const response = await fetch(`${API_BASE_URL}/${endpoint}/status/${botId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (type === 'backtest') {
+          setBacktestResult(prev => ({
+            ...prev,
+            ...data.result,
+            isRunning: data.bot.status === 'running',
+            progress: calculateProgress(data.bot.logs)
+          }));
+        } else {
+          setLiveBotStatus(prev => ({
+            ...prev,
+            ...data.bot,
+            settings: data.bot.settings || prev?.settings
+          }));
+        }
+
+        if (data.bot.status !== 'running') {
+          clearInterval(interval);
+          if (data.bot.status === 'completed') {
+            toast.success(type === 'backtest' ? 'Backtest completed!' : 'Live trading completed!');
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Monitoring error:', error);
+    }
+  }, 3000);
+
+  setMonitoringInterval(interval);
+};
+
+  const getPredictionColor = (prediction: number) => {
+    if (prediction > 0.7) return 'text-green-600';
+    if (prediction < 0.3) return 'text-red-600';
+    return 'text-yellow-600';
+  };
+
+  const getPredictionIcon = (prediction: number) => {
+    if (prediction > 0.7) return <ArrowUp className="w-4 h-4 text-green-600" />;
+    if (prediction < 0.3) return <ArrowDown className="w-4 h-4 text-red-600" />;
+    return <Brain className="w-4 h-4 text-yellow-600" />;
+  };
+
+  const getSignalBadge = (signal?: string) => {
+    switch (signal) {
+      case 'BUY':
+        return <Badge className="bg-green-500 persian-text">خرید</Badge>;
+      case 'SELL':
+        return <Badge className="bg-red-500 persian-text">فروش</Badge>;
+      case 'HOLD':
+        return <Badge className="bg-blue-500 persian-text">نگهداری</Badge>;
+      default:
+        return <Badge className="bg-gray-500 persian-text">نامشخص</Badge>;
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'running':
+        return <Badge className="bg-blue-500 persian-text">در حال اجرا</Badge>;
+      case 'completed':
+        return <Badge className="bg-green-500 persian-text">تکمیل شده</Badge>;
+      case 'failed':
+        return <Badge className="bg-red-500 persian-text">خطا</Badge>;
+      case 'stopped':
+        return <Badge className="bg-yellow-500 persian-text">متوقف شده</Badge>;
+      default:
+        return <Badge className="bg-gray-500 persian-text">نامشخص</Badge>;
+    }
   };
 
   if (!hasApiKeys) {
@@ -186,48 +447,19 @@ export function TradingPanel({ hasApiKeys }: TradingPanelProps) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="persian-text">دوره زمانی (روز)</Label>
-                  <Select 
-                    value={backtestSettings.period}
-                    onValueChange={(value) => setBacktestSettings({...backtestSettings, period: value})}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">1 روز</SelectItem>
-                      <SelectItem value="7">7 روز</SelectItem>
-                      <SelectItem value="30">30 روز</SelectItem>
-                      <SelectItem value="90">90 روز</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="persian-text">تایم فریم</Label>
-                  <Select 
-                    value={backtestSettings.timeframe}
-                    onValueChange={(value) => setBacktestSettings({...backtestSettings, timeframe: value})}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1m">1 دقیقه</SelectItem>
-                      <SelectItem value="5m">5 دقیقه</SelectItem>
-                      <SelectItem value="15m">15 دقیقه</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
               <Button 
                 onClick={handleBacktest} 
                 className="w-full persian-text"
-                disabled={backtestResult?.isRunning}
+                disabled={isLoading}
               >
-                {backtestResult?.isRunning ? 'در حال انجام...' : 'شروع بک‌تست'}
+                {isLoading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 ml-2 animate-spin" />
+                    در حال انجام...
+                  </>
+                ) : (
+                  'شروع بک‌تست'
+                )}
               </Button>
             </CardContent>
           </Card>
@@ -238,70 +470,26 @@ export function TradingPanel({ hasApiKeys }: TradingPanelProps) {
                 <CardTitle className="persian-text">نتایج بک‌تست</CardTitle>
               </CardHeader>
               <CardContent>
-                {backtestResult.isRunning ? (
-                  <div className="space-y-4">
-                    <div className="text-center persian-text">
-                      <p>در حال تجزیه و تحلیل داده‌ها...</p>
-                    </div>
-                    <Progress value={backtestResult.progress} className="w-full" />
-                    <div className="text-center text-sm text-muted-foreground persian-text">
-                      {backtestResult.progress}% تکمیل شده
-                    </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="persian-text">موجودی اولیه</Label>
+                    <p className="text-lg font-semibold">${backtestResult.initialBalance}</p>
                   </div>
-                ) : (
-                  <div className="space-y-6">
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                      <div className="text-center space-y-1">
-                        <p className="text-2xl font-bold text-green-600">
-                          ${backtestResult.finalBalance.toLocaleString()}
-                        </p>
-                        <p className="text-sm text-muted-foreground persian-text">موجودی نهایی</p>
-                      </div>
-                      <div className="text-center space-y-1">
-                        <p className="text-2xl font-bold text-primary">
-                          +${backtestResult.netProfit.toLocaleString()}
-                        </p>
-                        <p className="text-sm text-muted-foreground persian-text">سود خالص</p>
-                      </div>
-                      <div className="text-center space-y-1">
-                        <p className="text-2xl font-bold">
-                          {backtestResult.winRate}%
-                        </p>
-                        <p className="text-sm text-muted-foreground persian-text">نرخ برد</p>
-                      </div>
-                      <div className="text-center space-y-1">
-                        <p className="text-2xl font-bold text-red-600">
-                          -{backtestResult.maxDrawdown}%
-                        </p>
-                        <p className="text-sm text-muted-foreground persian-text">حداکثر ضرر</p>
-                      </div>
-                    </div>
-
-                    <Separator />
-
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                      <div>
-                        <p className="text-lg font-semibold">{backtestResult.totalTrades}</p>
-                        <p className="text-sm text-muted-foreground persian-text">کل معاملات</p>
-                      </div>
-                      <div>
-                        <p className="text-lg font-semibold text-green-600">{backtestResult.winningTrades}</p>
-                        <p className="text-sm text-muted-foreground persian-text">معاملات سودآور</p>
-                      </div>
-                      <div>
-                        <p className="text-lg font-semibold text-red-600">{backtestResult.losingTrades}</p>
-                        <p className="text-sm text-muted-foreground persian-text">معاملات ضررده</p>
-                      </div>
-                    </div>
-
-                    <Alert className="border-green-200 bg-green-50">
-                      <TrendingUp className="h-4 w-4 text-green-600" />
-                      <AlertDescription className="text-green-800 persian-text">
-                        نتایج مثبت! استراتژی در این دوره عملکرد خوبی داشته است.
-                      </AlertDescription>
-                    </Alert>
+                  <div className="space-y-2">
+                    <Label className="persian-text">موجودی نهایی</Label>
+                    <p className="text-lg font-semibold">${backtestResult.finalBalance}</p>
                   </div>
-                )}
+                  <div className="space-y-2">
+                    <Label className="persian-text">سود خالص</Label>
+                    <p className={`text-lg font-semibold ${backtestResult.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      ${backtestResult.netProfit}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="persian-text">نرخ برد</Label>
+                    <p className="text-lg font-semibold">{backtestResult.winRate}%</p>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -331,6 +519,7 @@ export function TradingPanel({ hasApiKeys }: TradingPanelProps) {
                     onChange={(e) => setLiveSettings({...liveSettings, balance: e.target.value})}
                     placeholder="1000"
                     className="english-text"
+                    disabled={liveBotStatus?.status === 'running'}
                   />
                 </div>
                 <div className="space-y-2">
@@ -338,6 +527,7 @@ export function TradingPanel({ hasApiKeys }: TradingPanelProps) {
                   <Select 
                     value={liveSettings.leverage}
                     onValueChange={(value) => setLiveSettings({...liveSettings, leverage: value})}
+                    disabled={liveBotStatus?.status === 'running'}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -358,60 +548,140 @@ export function TradingPanel({ hasApiKeys }: TradingPanelProps) {
                   onChange={(e) => setLiveSettings({...liveSettings, maxRisk: e.target.value})}
                   placeholder="2"
                   className="english-text"
+                  disabled={liveBotStatus?.status === 'running'}
                 />
               </div>
 
               <div className="flex items-center justify-between pt-4">
                 <div className="space-y-1">
                   <p className="persian-text">وضعیت ربات:</p>
-                  <Badge variant={isLiveTrading ? "default" : "secondary"} className="persian-text">
-                    {isLiveTrading ? 'فعال' : 'غیرفعال'}
-                  </Badge>
-                </div>
-                <Button 
-                  onClick={handleStartLiveTrading}
-                  variant={isLiveTrading ? "destructive" : "default"}
-                  className="persian-text"
-                >
-                  {isLiveTrading ? (
-                    <>
-                      <Square className="w-4 h-4 ml-2" />
-                      توقف ربات
-                    </>
+                  {liveBotStatus ? (
+                    getStatusBadge(liveBotStatus.status)
                   ) : (
-                    <>
-                      <Play className="w-4 h-4 ml-2" />
-                      شروع معاملات
-                    </>
+                    <Badge variant="secondary" className="persian-text">غیرفعال</Badge>
                   )}
-                </Button>
+                </div>
+                {liveBotStatus?.status === 'running' ? (
+                  <Button 
+                    onClick={handleStopLiveTrading}
+                    variant="destructive"
+                    className="persian-text"
+                    disabled={isLoading}
+                  >
+                    <Square className="w-4 h-4 ml-2" />
+                    توقف ربات
+                  </Button>
+                ) : (
+                  <Button 
+                    onClick={handleStartLiveTrading}
+                    className="persian-text"
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 ml-2 animate-spin" />
+                        در حال شروع...
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-4 h-4 ml-2" />
+                        شروع معاملات
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
 
-          {isLiveTrading && (
+          {liveBotStatus && (
             <Card>
               <CardHeader>
-                <CardTitle className="persian-text">آمار معاملات زنده</CardTitle>
+                <CardTitle className="persian-text">وضعیت معاملات زنده</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
-                  <div className="space-y-1">
-                    <p className="text-xl font-bold">$1,245.30</p>
-                    <p className="text-sm text-muted-foreground persian-text">موجودی فعلی</p>
+                <div className="space-y-6">
+                  {/* Real-time Stats */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="text-center p-4 bg-gray-50 rounded-lg">
+                      <Label className="persian-text">قیمت فعلی BTC</Label>
+                      <div className="flex items-center justify-center mt-2">
+                        <Bitcoin className="w-5 h-5 text-orange-500 mr-2" />
+                        <p className="text-xl font-bold">
+                          ${liveBotStatus.currentPrice ? liveBotStatus.currentPrice.toLocaleString() : '--'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="text-center p-4 bg-gray-50 rounded-lg">
+                      <Label className="persian-text">پیش‌بینی AI</Label>
+                      <div className="flex items-center justify-center mt-2">
+                        {liveBotStatus.prediction && getPredictionIcon(liveBotStatus.prediction)}
+                        <p className={`text-xl font-bold ml-2 ${getPredictionColor(liveBotStatus.prediction || 0.5)}`}>
+                          {liveBotStatus.prediction ? (liveBotStatus.prediction * 100).toFixed(1) + '%' : '--'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="text-center p-4 bg-gray-50 rounded-lg">
+                      <Label className="persian-text">سیگنال فعلی</Label>
+                      <div className="mt-2">
+                        {getSignalBadge(liveBotStatus.lastSignal)}
+                      </div>
+                    </div>
+
+                    <div className="text-center p-4 bg-gray-50 rounded-lg">
+                      <Label className="persian-text">سود/زیان</Label>
+                      <p className={`text-xl font-bold mt-2 ${(liveBotStatus.profit || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        ${liveBotStatus.profit ? liveBotStatus.profit.toFixed(2) : '0.00'}
+                      </p>
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-xl font-bold text-green-600">+$245.30</p>
-                    <p className="text-sm text-muted-foreground persian-text">سود روزانه</p>
+
+                  <Separator />
+
+                  {/* Settings Summary */}
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <Label className="persian-text">موجودی</Label>
+                      <p className="text-lg font-semibold">${liveBotStatus.settings.balance}</p>
+                    </div>
+                    <div>
+                      <Label className="persian-text">اهرم</Label>
+                      <p className="text-lg font-semibold">{liveBotStatus.settings.leverage}x</p>
+                    </div>
+                    <div>
+                      <Label className="persian-text">حداکثر ریسک</Label>
+                      <p className="text-lg font-semibold">{liveBotStatus.settings.maxRisk}%</p>
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-xl font-bold">12</p>
-                    <p className="text-sm text-muted-foreground persian-text">معاملات امروز</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xl font-bold">75%</p>
-                    <p className="text-sm text-muted-foreground persian-text">نرخ برد</p>
-                  </div>
+
+                  {/* Logs */}
+                  {liveBotStatus.logs.length > 0 && (
+                    <>
+                      <Separator />
+                      <div>
+                        <Label className="persian-text">آخرین لاگ‌ها</Label>
+                        <div className="max-h-48 overflow-y-auto mt-2 space-y-2">
+                          {liveBotStatus.logs.slice(-10).map((log, index) => (
+                            <div
+                              key={index}
+                              className={`text-sm font-mono p-2 rounded ${
+                                log.type === 'error' ? 'bg-red-50 text-red-700' :
+                                log.type === 'warning' ? 'bg-yellow-50 text-yellow-700' : 'bg-gray-50 text-gray-700'
+                              }`}
+                            >
+                              <span className="text-xs text-gray-500">
+                                {new Date(log.timestamp).toLocaleTimeString('fa-IR')}
+                              </span>
+                              {' - '}
+                              {log.message}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </CardContent>
             </Card>
