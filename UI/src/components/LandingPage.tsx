@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -8,7 +8,51 @@ import { Checkbox } from './ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { toast } from 'sonner@2.0.3';
 import { Mail, Lock, User, ArrowRight, Loader2 } from 'lucide-react';
-import { CandlestickChart } from './CandlestickChart';
+
+// Robot SVG Icon Component with Blinking Eyes
+const RobotIcon = ({ className = "w-8 h-8 sm:w-12 sm:h-12 text-red" }) => {
+  const [eyesClosed, setEyesClosed] = useState(false);
+  
+  // Blink animation effect
+  useEffect(() => {
+    const blinkInterval = setInterval(() => {
+      setEyesClosed(true);
+      setTimeout(() => setEyesClosed(false), 150);
+    }, 3000);
+    
+    return () => clearInterval(blinkInterval);
+  }, []);
+
+  return (
+    <svg 
+      className={className} 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      {/* Robot Body */}
+      <path 
+        d="M12 2C13.1 2 14 2.9 14 4C14 5.1 13.1 6 12 6C10.9 6 10 5.1 10 4C10 2.9 10.9 2 12 2ZM21 9V7L18 8L16 7L14 8L12 7L10 8L8 7L6 8L3 7V9L5 10V14L3 15V17L5 16L5 20C5 21.1 5.9 22 7 22H17C18.1 22 19 21.1 19 20V16L21 17V15L19 14V10L21 9ZM17 20H7V16H17V20Z" 
+        fill="currentColor"
+      />
+      
+      {/* Robot Eyes - Animated */}
+      {eyesClosed ? (
+        <>
+          {/* Closed eyes (horizontal lines) */}
+          <line x1="7" y1="12" x2="11" y2="12" stroke="red" strokeWidth="2" />
+          <line x1="13" y1="12" x2="17" y2="12" stroke="red" strokeWidth="2" />
+        </>
+      ) : (
+        <>
+          {/* Open eyes (circles) */}
+          <circle cx="9" cy="12" r="1.5" fill="red"/>
+          <circle cx="15" cy="12" r="1.5" fill="red"/>
+        </>
+      )}
+    </svg>
+  );
+};
 
 interface LandingPageProps {
   onLogin: (user: { name: string; email: string }, token: string) => void; // Add token parameter
@@ -53,11 +97,11 @@ export function LandingPage({ onLogin }: LandingPageProps) {
 
       const data: AuthResponse = await response.json();
 
-if (data.success) {
-  localStorage.setItem('token', data.token);
-  toast.success('با موفقیت وارد شدید');
-  onLogin({ name: data.user.name, email: data.user.email }, data.token); // Add token here
-} else {
+      if (data.success) {
+        localStorage.setItem('token', data.token);
+        toast.success('با موفقیت وارد شدید');
+        onLogin({ name: data.user.name, email: data.user.email }, data.token); // Add token here
+      } else {
         toast.error('ایمیل یا رمز عبور اشتباه است');
       }
     } catch (error) {
@@ -88,10 +132,10 @@ if (data.success) {
       const data: AuthResponse = await response.json();
 
       if (data.success) {
-  localStorage.setItem('token', data.token);
-  toast.success('حساب کاربری با موفقیت ایجاد شد');
-  onLogin({ name: data.user.name, email: data.user.email }, data.token); // Add token here
-} else {
+        localStorage.setItem('token', data.token);
+        toast.success('حساب کاربری با موفقیت ایجاد شد');
+        onLogin({ name: data.user.name, email: data.user.email }, data.token); // Add token here
+      } else {
         toast.error('ایمیل قبلاً ثبت شده است');
       }
     } catch (error) {
@@ -135,22 +179,22 @@ if (data.success) {
   };
 
   return (
-    <div className="min-h-screen relative bg-background">
+    <div className="min-h-screen relative bg-background" dir="rtl">
       {/* Simple, clean background */}
       <div className="absolute inset-0 bg-gradient-to-br from-background to-primary/3"></div>
 
       <div className="relative z-10 container mx-auto px-4 py-8 flex flex-col items-center justify-center min-h-screen">
-        <div className="text-center mb-8">
+        <div className="text-center mb-8 w-full flex flex-col items-center">
           <div className="flex items-center justify-center mb-6">
             <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-primary to-primary/80 rounded-2xl flex items-center justify-center shadow-lg">
-              <CandlestickChart className="w-8 h-8 sm:w-12 sm:h-12 text-white" />
+              <RobotIcon className="w-8 h-8 sm:w-12 sm:h-12 text-red" />
             </div>
           </div>
-          <div className="space-y-3">
+          <div className="space-y-3 w-full flex flex-col items-center">
             <h1 className="text-3xl sm:text-4xl lg:text-5xl persian-title">
               زینک بات
             </h1>
-            <p className="text-base sm:text-lg text-muted-foreground max-w-sm sm:max-w-md mx-auto leading-relaxed persian-title-center px-4">
+            <p className="text-base sm:text-lg text-muted-foreground max-w-sm sm:max-w-md mx-auto leading-relaxed persian-title-center px-4 text-center">
               پلتفرم هوشمند معاملات خودکار ارزهای دیجیتال با الگوریتم‌های پیشرفته یادگیری عمیق
             </p>
             <div className="flex items-center justify-center gap-2 text-sm text-primary/70">
@@ -160,10 +204,10 @@ if (data.success) {
           </div>
         </div>
 
-        <Card className="w-full max-w-sm sm:max-w-md shadow-lg border-primary/20 bg-white/95 backdrop-blur-sm">
+        <Card className="w-full max-w-sm sm:max-w-md shadow-lg border-primary/20 bg-white/95 backdrop-blur-sm mx-auto">
           <CardHeader className="text-center space-y-2 pb-4">
             <CardTitle className="persian-title text-lg sm:text-xl">ورود به حساب کاربری</CardTitle>
-            <CardDescription className="persian-text text-sm">
+            <CardDescription className="persian-text text-sm text-center">
               برای دسترسی به پنل معاملات هوشمند وارد شوید
             </CardDescription>
           </CardHeader>
@@ -177,31 +221,31 @@ if (data.success) {
               <TabsContent value="signin">
                 <form onSubmit={handleSignIn} className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="signin-email" className="persian-text">آدرس ایمیل</Label>
+                    <Label htmlFor="signin-email" className="persian-text text-right w-full block">آدرس ایمیل</Label>
                     <div className="relative">
-                      <Mail className="absolute right-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="signin-email"
                         type="email"
                         placeholder="ایمیل خود را وارد کنید"
-                        className="pr-10 bg-white/80 border-primary/20 focus:border-primary transition-all text-left"
+                        className="pl-10 bg-white/80 border-primary/20 focus:border-primary transition-all text-right w-full"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         dir="ltr"
-                        style={{ textAlign: 'left' }}
+                        style={{ textAlign: 'right' }}
                         disabled={isLoading}
                       />
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="signin-password" className="persian-text">رمز عبور</Label>
+                    <Label htmlFor="signin-password" className="persian-text text-right w-full block">رمز عبور</Label>
                     <div className="relative">
-                      <Lock className="absolute right-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="signin-password"
                         type="password"
                         placeholder="رمز عبور خود را وارد کنید"
-                        className="pr-10 persian-input-placeholder bg-white/80 border-primary/20 focus:border-primary transition-all"
+                        className="pl-10 persian-input-placeholder bg-white/80 border-primary/20 focus:border-primary transition-all w-full"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         style={{ direction: 'rtl', textAlign: 'right' }}
@@ -209,7 +253,7 @@ if (data.success) {
                       />
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-left">
                     <Button
                       type="button"
                       variant="link"
@@ -228,13 +272,13 @@ if (data.success) {
                     >
                       {isLoading ? (
                         <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          <Loader2 className="ml-2 h-4 w-4 animate-spin" />
                           در حال ورود...
                         </>
                       ) : (
                         <>
                           ورود به پنل
-                          <ArrowRight className="mr-2 h-4 w-4" />
+                          <ArrowRight className="ml-2 h-4 w-4" />
                         </>
                       )}
                     </Button>
@@ -245,7 +289,7 @@ if (data.success) {
                       onClick={handleGoogleLogin}
                       disabled={isLoading}
                     >
-                      <Mail className="ml-2 h-4 w-4" />
+                      <Mail className="mr-2 h-4 w-4" />
                       ورود سریع با Google
                     </Button>
                   </div>
@@ -255,14 +299,14 @@ if (data.success) {
               <TabsContent value="signup">
                 <form onSubmit={handleSignUp} className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="signup-name" className="persian-text">نام و نام خانوادگی</Label>
+                    <Label htmlFor="signup-name" className="persian-text text-right w-full block">نام و نام خانوادگی</Label>
                     <div className="relative">
-                      <User className="absolute right-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="signup-name"
                         type="text"
                         placeholder="نام کامل خود را وارد کنید"
-                        className="pr-10 persian-input-placeholder bg-white/80 border-primary/20 focus:border-primary transition-all"
+                        className="pl-10 persian-input-placeholder bg-white/80 border-primary/20 focus:border-primary transition-all w-full"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         style={{ direction: 'rtl', textAlign: 'right' }}
@@ -271,31 +315,31 @@ if (data.success) {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="signup-email" className="persian-text">آدرس ایمیل</Label>
+                    <Label htmlFor="signup-email" className="persian-text text-right w-full block">آدرس ایمیل</Label>
                     <div className="relative">
-                      <Mail className="absolute right-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="signup-email"
                         type="email"
                         placeholder="ایمیل خود را وارد کنید"
-                        className="pr-10 bg-white/80 border-primary/20 focus:border-primary transition-all text-left"
+                        className="pl-10 bg-white/80 border-primary/20 focus:border-primary transition-all text-right w-full"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         dir="ltr"
-                        style={{ textAlign: 'left' }}
+                        style={{ textAlign: 'right' }}
                         disabled={isLoading}
                       />
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="signup-password" className="persian-text">رمز عبور</Label>
+                    <Label htmlFor="signup-password" className="persian-text text-right w-full block">رمز عبور</Label>
                     <div className="relative">
-                      <Lock className="absolute right-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="signup-password"
                         type="password"
                         placeholder="رمز عبور قوی انتخاب کنید"
-                        className="pr-10 persian-input-placeholder bg-white/80 border-primary/20 focus:border-primary transition-all"
+                        className="pl-10 persian-input-placeholder bg-white/80 border-primary/20 focus:border-primary transition-all w-full"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         style={{ direction: 'rtl', textAlign: 'right' }}
@@ -319,7 +363,7 @@ if (data.success) {
                             شرایط و ضوابط و خط‌مشی حریم خصوصی
                           </button>
                         </DialogTrigger>
-                        <DialogContent className="max-w-2xl max-h-96 overflow-y-auto">
+                        <DialogContent className="max-w-2xl max-h-96 overflow-y-auto" dir="rtl">
                           <DialogHeader>
                             <DialogTitle className="persian-title text-xl">شرایط و ضوابط استفاده</DialogTitle>
                           </DialogHeader>
@@ -374,13 +418,13 @@ if (data.success) {
                     >
                       {isLoading ? (
                         <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          <Loader2 className="ml-2 h-4 w-4 animate-spin" />
                           در حال ایجاد حساب...
                         </>
                       ) : (
                         <>
                           ایجاد حساب کاربری
-                          <ArrowRight className="mr-2 h-4 w-4" />
+                          <ArrowRight className="ml-2 h-4 w-4" />
                         </>
                       )}
                     </Button>
@@ -391,7 +435,7 @@ if (data.success) {
                       onClick={handleGoogleLogin}
                       disabled={isLoading}
                     >
-                      <Mail className="ml-2 h-4 w-4" />
+                      <Mail className="mr-2 h-4 w-4" />
                       ثبت نام سریع با Google
                     </Button>
                   </div>
@@ -401,7 +445,7 @@ if (data.success) {
           </CardContent>
         </Card>
 
-        <div className="mt-6 sm:mt-8 text-center text-sm text-muted-foreground space-y-2 px-4">
+        <div className="mt-6 sm:mt-8 text-center text-sm text-muted-foreground space-y-2 px-4 w-full">
           <p className="persian-text">
             © ۱۴۰۳ زینک بات. تمامی حقوق محفوظ است.
           </p>
@@ -410,6 +454,31 @@ if (data.success) {
           </p>
         </div>
       </div>
+
+      <style jsx>{`
+        .persian-title {
+          font-family: 'Vazirmatn', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          font-weight: 700;
+          text-align: center;
+        }
+        .persian-text {
+          font-family: 'Vazirmatn', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          text-align: right;
+        }
+        .persian-title-center {
+          font-family: 'Vazirmatn', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          text-align: center;
+        }
+        .persian-input-placeholder::placeholder {
+          text-align: right;
+          direction: rtl;
+          font-family: 'Vazirmatn', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .rtl-text {
+          direction: rtl;
+          text-align: right;
+        }
+      `}</style>
     </div>
   );
 }

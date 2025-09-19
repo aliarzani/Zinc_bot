@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Mobile Trading App Development</string>
+    <string name="title_activity_main">Mobile Trading App Development</string>
+    <string name="package_name">sarzaminecodha.ir</string>
+    <string name="custom_url_scheme">sarzaminecodha.ir</string>
+</resources>
