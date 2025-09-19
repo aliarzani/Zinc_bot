@@ -207,9 +207,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
         <Card className="w-full max-w-sm sm:max-w-md shadow-lg border-primary/20 bg-white/95 backdrop-blur-sm mx-auto">
           <CardHeader className="text-center space-y-2 pb-4">
             <CardTitle className="persian-title text-lg sm:text-xl">ورود به حساب کاربری</CardTitle>
-            <CardDescription className="persian-text text-sm text-center">
-              برای دسترسی به پنل معاملات هوشمند وارد شوید
-            </CardDescription>
+
           </CardHeader>
           <CardContent className="px-4 sm:px-6">
             <Tabs defaultValue="signin" className="w-full">
